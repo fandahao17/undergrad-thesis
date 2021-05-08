@@ -22,6 +22,7 @@ Ceph~\cite{weil2006ceph}也通过mClock~\cite{gulati2010mclock}实现分布式�
 \JF{怎么实现的？}
 
 然而，交互性高的数据应用服务需要良好的存储尾延迟保证~\cite{dean2013tail,hao2016tail}。
+\JF{详细介绍Tail at scale?}
 例如，某些用户除了对访问带宽有要求，还会要求对自己租用的SSD的读请求中99\%均有两毫秒以下的延迟。
 尽管可以通过设置不同租户的优先级保证某些租户的请求被优先服务，但并不能给出严格的尾延迟保证。
 在这种情况下，仅仅对每个用户的访问带宽进行限制是不够的。
@@ -29,7 +30,7 @@ Ceph~\cite{weil2006ceph}也通过mClock~\cite{gulati2010mclock}实现分布式�
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.8\textwidth]{thesis-wr-interfere.pdf}
-  \caption{写操作对其他租户读延迟的影响}
+  \caption{写操作对其他租户读延迟的影响。很小的写吞吐就使读租户的尾延迟增大了约10倍。}
   \label{fig:bg-wr-interfere}
 \end{figure}
 
@@ -43,14 +44,44 @@ SSD内部的\textit{读写干扰}使多租户的性能隔离更加复杂。
 \section{相关工作}
 \label{sec:bg-related-work}
 
+本节介绍在SSD资源池化系统中提供服务质量保证的相关工作。
+\autoref{sec:bg-related-work-ssd}将介绍如何在SSD层面提供服务质量的保证，
+\autoref{sec:bg-related-work-system}将介绍在系统层面提供服务质量保证的方法。
+
 \subsection{保证服务质量的SSD}
+\label{sec:bg-related-work-ssd}
 
-从SSD本身来设计（灰盒SSD）。
+在SSD层面上提供服务质量的方式主要可分为两种。
+第一种是对SSD的性能进行建模，从而预测垃圾回收、写缓冲区刷新等操作会在何时发生。
+SSDCheck~\cite{kim2018ssdcheck}和FusionRAID~\cite{jiang2021fusionraid}通过一系列测试脚本来获取SSD的垃圾回收间隔、写缓冲区大小等信息，
+但是他们的测试脚本都基于对SSD行为的假设，在我们的实验中，并非所有SSD都遵循这一假设；
+除此之外，ReFlex~\cite{klimovic2017reflex}利用曲线拟合，为SSD上的读写请求建立代价模型\JF{做什么}；
+近期，LinnOS~\cite{hao2020linnos}通过一个轻量的神经网络来预测每个请求的延迟是否会较大。
 
-获取SSD内部信息，SSD性能建模（加Linnos）。
+另一种方法是修改SSD控制器，使其具有控制服务质量的特性。
+例如，NVMe 1.4标准~\cite{nvme2020}提出了I/O Determinism和NVM Set。
+其中，I/O Determinism提供了具有确定性延迟和不确定性延迟的时间窗口，它规定了用户与SSD之间的一种协议。
+SSD保证在确定性窗口中不进行后台的维护操作，用户则保证在确定性窗口中不进行写操作~\cite{petersen2018enabling}。
+NVM Set是在SSD控制器层面就将资源拆分为多个集合，从而支持多个租户无干扰地共享同一SSD。
+此外，还有其它通过修改SSD控制器~\cite{yan2017tiny,arash2018flin}和使用Open-Channel SSD\JF{加引用}来改进SSD的尾延迟的方法。
 
 \subsection{保证服务质量的云服务系统}
+\label{sec:bg-related-work-system}
 
-老方法：cgroup，bfq，mclock？后续？不写了？
+如\autoref{sec:bg-perf-isolation}所述，传统的云存储服务大多以保证租户的吞吐为服务质量的优化目标~\cite{patterson2004latency, cgroup,gulati2010mclock}。
+近年来，尾延迟越来越受到重视~\cite{dean2013tail}，确保低尾延迟的一种常用方法是利用冗余。
+\JF{Performance Variablity?}
 
-新方法：redundancy、各种Job Scheduler
+利用冗余的方法之一是负载均衡，即将每个请求尽可能分到负载最低的机器上，从而获得最好的响应时间。
+有大量研究通过推断各个冗余服务器的负载来进行尽可能最优的请求分发。
+例如，C3~\cite{suresh2015c3}通过估计队列深度和服务时间对冗余服务器进行排序来选择最优的冗余服务器。
+\autoref{sec:bg-related-work-ssd}提到的对SSD进行性能建模的方式也可以用来进行冗余服务器的选择。
+
+另一种利用冗余的方法是hedging，即将同一请求同时发给多个冗余服务器，并以其中最快的一个作为最终的结果。
+在这种情况下，只有当所有冗余服务器均出现尾延迟时，该请求才会出现异常的高延迟，因此能将异常延迟出现的可能大大降低。
+然而，这种方法会使各个服务器的负载增加~\cite{primorac2021hedge}，因此并不能在所有情况下都确保比不使用冗余的尾延迟更好。
+\citet{vulimiri2013low}对利用冗余改善延迟进行了定量分析，\JF{结论}。
+
+除此之外，还有一些系统试图在资源调度和集群管理时确保服务质量。
+例如，PSLO~\cite{li2016pslo}利用控制论中的方法，实现了机械硬盘上的请求级尾延迟保证；
+Quasar~\cite{delimitrou2014quasar}利用协同过滤预测租户所需的服务质量，并利用一个贪心算法选择最适合的资源配置方式。
