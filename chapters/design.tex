@@ -1,6 +1,7 @@
 % !TeX root = ../main.tex
 
 \chapter{多租户性能隔离的闪存资源池化系统设计}
+\label{chap:design}
 
 本章介绍本研究提出的多租户性能隔离的闪存资源池化系统设计。
 \autoref{sec:design-overview}是对该系统各组件的功能和每一租户获取、访问资源的流程概述。
@@ -77,9 +78,9 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
   \centering
   \includegraphics[width=0.8\textwidth]{thesis-iso-wr.pdf}
   \caption{
-        分离的读写时间窗口在ssd上的工作流程。
+        分离的读写时间窗口在单块SSD上的工作流程。
         在读窗口中，所有写请求被缓存于缓冲区中，从而保证读请求的尾延迟；
-        在写窗口中，之前被缓存的写请求被批量发送，充分利用ssd的写带宽。
+        在写窗口中，之前被缓存的写请求被批量发送，充分利用SSD的写带宽。
       }
   \label{fig:design-iso-wr}
 \end{figure}
@@ -126,7 +127,7 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 \section{满足SLA要求的数据分布算法}
 \label{sec:design-allocation}
 
-并非所有都需要极高的SLA保证：根据SLA需求选择合适的组合。
+通过构建无读写干扰的SSD阵列，
 
 \subsection{SLA曲线及其运算}
 \label{sec:design-allocation-sla-arithmetic}
@@ -136,21 +137,46 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 \subsection{多租户数据分布算法}
 \label{sec:design-allocation-algo}
 
+\IncMargin{1em}
 \begin{algorithm}[h]
   \SetAlgoLined
-  \KwData{this text}
-  \KwResult{how to write algorithm with \LaTeX2e }
+  \SetKwData{Suitable}{unitChoices}\SetKwData{SortedUnits}{sortedUnits}
+  \SetKwData{Request}{request}\SetKwData{OpenUnits}{openUnits}\SetKwData{UnitTypes}{unitTypes}
+  \SetKwData{U}{u}
+  \SetKwData{UT}{ut}
+  \SetKwData{BestType}{bestType}
+  \SetKwData{BestCost}{bestCost}
+  \SetKwData{CostForRequest}{costForRequest}
+  \SetKwFunction{Filter}{Filter}
+  \SetKwFunction{Fitness}{Fitness}
+  \KwData{用户请求\Request，已启用的存储单元列表\OpenUnits，可选的存储单元类型\UnitTypes，均以$(C, S, T)$的形式表示，每个存储单元类型有开销$P$}
+  \BlankLine
 
-  initialization\;
-  \While{not at end of this document}{
-    read current\;
-    \eIf{understand}{
-      go to next section\;
-      current section becomes this one\;
-    }{
-      go back to the beginning of current section\;
+  \tcp{将\Request 中的数据块尽可能存入已开启的存储单元中}
+  \Suitable$\leftarrow$ \Filter{\OpenUnits, \Request.T} \;% $\leftarrow$ \;% \Filter{$open\_units$, $request\.T$}\;
+  将 \Suitable 按 \Fitness 函数排序 \;
+
+  \ForEach{\Suitable 中的存储单元\U}{
+    尽可能多地将\Request 中的数据块存放于\U 中 \;
+    \lIf(\tcp*[h]{\Request 中所有的数据块都已分配完毕}){\Request $.C$ == 0}{
+      \Return{}
     }
   }
-  \caption{算法示例1}
-  \label{algo:algorithm1}
+
+  \tcp{需要启用新的存储单元，贪心地选择用最小开销容纳剩余的数据块}
+  
+  \BestCost $\leftarrow$ $+\infty$
+
+  \ForEach{\UnitTypes 中的存储单元类型\UT}{
+    \CostForRequest $\leftarrow$ 容纳\Request 所需的\UT 个数$\times$\UT .P \;
+    \If{\CostForRequest $<$ \BestCost}{
+      \BestType $\leftarrow$ \UT \;
+    }
+  }
+
+  启用\BestType 类型存储单元来存放\Request 中的数据块 \;
+
+  \caption{租户进入系统时的数据分布算法}
+  \label{algo:tenant-allocation}
 \end{algorithm}
+\DecMargin{1em}
