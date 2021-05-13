@@ -22,6 +22,7 @@
   \includegraphics[width=0.8\textwidth]{thesis-design.pdf}
   \caption{
       本系统的总体概述。
+      租户和存储单元以（存储数据块数，SLA曲线，尾延迟要求）这个三元组来描述，存储单元还有开销P。
       图中蓝色虚线标示的是新租户进入本系统时的控制路径，
       绿色实线标示的是系统中的租户访问存储单元时的数据路径。
       }
@@ -59,6 +60,15 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 \subsection{分离的读写时间窗口}
 \label{sec:design-array-isorw}
 
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.8\textwidth]{trace-qos.pdf}
+  \caption{
+        Samsung PM963上，读吞吐为200KIOPS，写吞吐为10KIOPS时，读请求的异常延迟没有明显规律。
+      }
+  \label{fig:design-wr-mix}
+\end{figure}
+
 本小节给出在单一SSD上避免读写干扰的方法，该方法基于如下对读写干扰产生的根本原因的分析。
 \JF{图.a}采样了在读吞吐为200KIOPS，写吞吐为30KIOPS时，\JF{多长时间内？}Samsung PM963上读请求的延迟情况。
 可以看出，异常延迟的总次数并不多，因此它们仅影响了读请求的尾延迟。
@@ -88,6 +98,16 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 \JF{图.b}描述了分离的读写时间窗口对SSD的读延迟分布的影响。
 通过将写操作在写窗口中批量发送，所有可能出现异常读延迟的情况都被限制在了写窗口中。
 通过避免在写窗口中发送读请求，租户可以在在读窗口中获得稳定的读延迟。
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.8\textwidth]{trace-qos-wr.pdf}
+  \caption{
+        Samsung PM963上，读吞吐为200KIOPS，写吞吐为10KIOPS并启用分离的读写窗口时，所有的异常延迟均在写窗口中出现。
+        读窗口内可以得到稳定的尾延迟。
+      }
+  \label{fig:design-wr-isolated}
+\end{figure}
 
 \subsection{读写窗口协调的冗余磁盘阵列}
 \label{sec:design-array-composition}
@@ -127,15 +147,117 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 \section{满足SLA要求的数据分布算法}
 \label{sec:design-allocation}
 
-通过构建无读写干扰的SSD阵列，
+通过构建无读写干扰的SSD阵列，本系统可以保证具有严格尾延迟要求的租户的服务质量。
+然而，如\autoref{chap:background}所说，资源池化系统中租户的尾延迟要求是多样的，并非所有租户都需要严格无读写干扰的存储服务。
+况且，\autoref{sec:design-array}中搭建的SSD阵列利用了冗余，成本较高。
+因此，一个自然的问题就是，当一个租户进入系统时，如何为其选择数据分布，可以使系统整体的开销尽可能少？
+
+本章提出一个基于\autoref{chap:intro}提出的SLA曲线的多租户数据分布算法。
+本章首先根据数据分布问题的特点定义了SLA曲线的加法、减法和除法操作。
+随后，本章参考装箱问题~\cite{wiki:Bin-packing}中的最佳适应（Best Fit）算法，并运用针对SLA曲线提出的适应性函数，提出了一个多租户数据分布的贪心算法。
 
 \subsection{SLA曲线及其运算}
 \label{sec:design-allocation-sla-arithmetic}
 
-加法、减法。
+本节中，将SLA曲线表示为最大读吞吐作为写吞吐的函数。
+具体来讲，对于SLA曲线$A$，$A[w] = r$表示在写吞吐为$w$下，在满足尾延迟要求的情况下能达到的最大读吞吐为$r$。
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1.0\textwidth]{thesis-sla-add.pdf}
+  \caption{
+        两个SLA曲线A、B之和是能够同时满足A和B的SLA要求的最小曲线。
+        图中橙色和蓝色曲线为两个租户的SLA曲线，红色为两者之和。
+      }
+  \label{fig:design-sla-add}
+\end{figure}
+
+当两个租户同时运行在一台SSD上时，总体的读和写吞吐是两者吞吐的叠加。
+由于SLA曲线代表了用户需求的最低保证，因此，他们总体的SLA曲线应代表两者所有可能的吞吐组合的最大值。
+为了方便描述多个租户共同的SLA，本节定义SLA曲线的加法和数乘如下：
+
+\begin{definition}
+  \textit{SLA曲线的加法和数乘}
+
+  若A和B均为SLA曲线，则定义$C=A+B$为：
+  \begin{equation}
+    C[w] = \max_{0 \le i \le w} (A[i] + B[w - i])
+  \end{equation}
+
+  根据加法的定义，定义SLA曲线的\textbf{数乘}为$k * A$为$k$个SLA曲线$A$的累加。
+
+\end{definition}
+
+SLA曲线加法如\autoref{fig:design-sla-add}所示。
+
+除此之外，一个存储单元是否能满足一个租户的SLA需求，是由租户的SLA曲线是否在存储单元的SLA曲线覆盖的范围内确定的。
+为了描述这种关系，本节定义SLA曲线的\textit{包含}如下：
+
+\begin{definition}
+  \textit{SLA曲线的包含}
+
+  若A和B均为SLA曲线，则$A\preceq B$（A\textbf{包含}在B中），当且仅当$\forall w$，若$A[r] > 0$，则有$A[w] \le B[w]$。
+\end{definition}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1.0\textwidth]{thesis-sla-subtract.pdf}
+  \caption{
+        两个SLA曲线A、B之差是在满足B的SLA要求的情况下，A还能满足的最大SLA曲线。
+      }
+  \label{fig:design-sla-subtract}
+\end{figure}
+
+有了加法和包含的定义后，本节继续定义SLA曲线的减法。
+减法的使用场景为，当一个租户使用一个存储单元时，存储单元剩余的可用存储带宽会相应下降。
+其剩余的存储带宽应当为在满足该租户的SLA曲线情况下，还能容纳的最大带宽。
+因此，这两个SLA曲线的差应该代表他们所有吞吐组合之差的最小值。
+具体来讲，SLA曲线的差定义如下：
+
+\begin{definition}
+  \textit{SLA曲线的减法}
+
+  若A和B均为SLA曲线，且$B \preceq A$，则定义$C=A-B$为：
+  \begin{equation}
+    C[w] = \min_{i} (A[i] - B[i - r])
+  \end{equation}
+\end{definition}
+
+根据如上减法的定义，本文继续定义SLA曲线的带余除法如下：
+
+\begin{definition}
+  \textit{SLA曲线的带余除法}
+
+  若A和B均为SLA曲线，且$B \preceq A$，则定义A与B的商和模为：
+  \begin{equation}
+    \begin{split}
+      A / B & = \max k \in \mathbb{Z}^{+} s.t. k * B \preceq A \\
+      A \% B & = A - (A / B) * B
+    \end{split}
+  \end{equation}
+\end{definition}
+
 
 \subsection{多租户数据分布算法}
 \label{sec:design-allocation-algo}
+
+在一个资源池化系统中，多个租户如何在众多资源中选择最合适的分布，使得他们的需求被满足，且整体开销最低，可以被建模为经典的\textit{装箱问题}~\cite{wiki:Bin-packing}。
+装箱问题的背景是，将一系列大小不同的一维物体装入若干个大小一致的箱子中，使得使用的总箱子数尽可能少。
+
+装箱问题的一个常见在线算法是\textit{最佳适应}（Best Fit）。
+该算法是一个启发式贪心算法，可以概括为：
+每当一个新物体加入时，将其放入可以容纳它的剩余空间最小（最适应）的箱子中；
+若没有箱子可以容纳它，则启用一个新的箱子来存放它。
+
+本系统参考最佳适应算法进行数据分布，但是基于SLA曲线的多租户数据分布问题与典型的装箱问题相比，主要有以下区别：
+
+\begin{enumerate}
+  \item 租户的资源需求和存储单元的服务能力（\textit{物体}）以SLA曲线表示，无法明确比较大小。因此，为租户选择“最适应”的存储单元是困难的。
+  \item 不同的存储单元（\textit{箱子}）有不同的服务能力，而且有不同的开销。因此，需要启用新的箱子时，需要选择启用哪种存储单元。
+  \item 本系统的用户需求是可分的，可以通过条带化等方法将用户的数据块分散在不同的存储单元中，进一步提高利用率。
+\end{enumerate}
+
+针对以上问题，本系统提出的贪心算法（~\autoref{algo:tenant-allocation}）对最佳适应算法做出了改进。
 
 \IncMargin{1em}
 \begin{algorithm}[h]
@@ -154,9 +276,9 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 
   \tcp{将\Request 中的数据块尽可能存入已开启的存储单元中}
   \Suitable$\leftarrow$ \Filter{\OpenUnits, \Request.T} \;% $\leftarrow$ \;% \Filter{$open\_units$, $request\.T$}\;
-  将 \Suitable 按 \Fitness 函数排序 \;
+  Sort \Suitable by \Fitness \; \label{algo:fitness-sort}
 
-  \ForEach{\Suitable 中的存储单元\U}{
+  \ForEach{ \U in \Suitable }{
     尽可能多地将\Request 中的数据块存放于\U 中 \;
     \lIf(\tcp*[h]{\Request 中所有的数据块都已分配完毕}){\Request $.C$ == 0}{
       \Return{}
@@ -167,7 +289,7 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
   
   \BestCost $\leftarrow$ $+\infty$
 
-  \ForEach{\UnitTypes 中的存储单元类型\UT}{
+  \ForEach{ \UT in \UnitTypes }{
     \CostForRequest $\leftarrow$ 容纳\Request 所需的\UT 个数$\times$\UT .P \;
     \If{\CostForRequest $<$ \BestCost}{
       \BestType $\leftarrow$ \UT \;
@@ -180,3 +302,16 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
   \label{algo:tenant-allocation}
 \end{algorithm}
 \DecMargin{1em}
+
+首先，针对SLA曲线的“最适应”和数据可分的问题，本算法参考向量背包问题~\cite{panigrahy2011heuristics}，提出使用\textit{Fitness}函数为所有存储单元排序（\autoref{algo:fitness-sort})，
+之后按照Fitness函数确定的适应性顺序，将用户需求中尽可能多的数据块存入对应的存储单元中。
+本节提出以下SLA曲线的Fitness函数，之后将在\autoref{sec:eval}对它们进行比较：
+
+\begin{itemize}
+  \item 存储单元和它最多可容纳的租户数据块SLA曲线与X、Y轴围成的的\textbf{面积比}。这个量度不考虑形状，只选择大小最接近的。
+  \item 存储单元和它最多可容纳的租户数据块SLA曲线的\textbf{点积}。\citet{panigrahy2011heuristics,gabay2016vector}指出，使用向量的点积可以找出“形状”最匹配且大小最接近的向量，SLA曲线也同理。
+  \item 存储单元和它最多可容纳的租户数据块SLA曲线的\textbf{$L_2$范数}。与点积同理，$L_2$范数也倾向于选择最接近用户SLA曲线的存储单元。
+\end{itemize}
+
+除此之外，针对存储单元的异构问题，本算法采用贪心的方式选择对当前租户需求来说开销最小的存储单元。
+具体来讲，针对每种存储单元，本算法依次计算利用其存储用户需求所需要的开销，并从中选择开销最小的存储单元。
