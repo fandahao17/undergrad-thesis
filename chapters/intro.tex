@@ -25,6 +25,15 @@ Azure Blob Storage~\cite{azureblob}、AWS S3~\cite{awss3}等对象存储服务
 对于追求快速响应的Web服务而言，这意味着其服务质量将受到较大的影响~\cite{dean2013tail}。
 因此，追求低延迟的应用仍倾向于使用本地独占的SSD存储~\cite{awsvm,azurevm}。
 
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.6\textwidth]{thesis-intro-cmp.pdf}
+  \caption{
+        由于SSD读写操作的不对称性，简单的限制读写带宽会造成资源的浪费。
+      }
+  \label{fig:intro}
+\end{figure}
+
 简单限制各个租户分享到的最大带宽的方式不能保证各个租户的访问尾延迟，因此不能实现性能隔离。
 并且，由于SSD的读写操作对磁盘的影响并不对称，需要为读和写分别设置最大带宽，但租户往往不会同时达到读和写的最大带宽，这会造成SSD带宽的浪费。
 因此，本文使用\textit{SLA曲线}（Service Level Agreement）来描述服务质量。
