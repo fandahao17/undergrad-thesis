@@ -127,6 +127,7 @@ $T$表示尾延迟要求（Tail latency），例如延迟的99\%分位数小于2
 通过协调各个SSD上的读写窗口，可以保证同时处于写窗口中的SSD数量不多于阵列的恢复能力。
 当有面向处于写窗口中的SSD数据的读请求时，可以利用其它SSD中的数据恢复该SSD中的数据。
 由于其它SSD均处于读窗口中，具有良好的访问延迟，因此对处于写窗口中SSD数据的恢复也具有良好的延迟。
+此外，由于未被完全写入的写数据总在缓冲区中存有一份拷贝，各个SSD上的数据一致性也得到了保证。
 
 \begin{figure}[h]
   \centering
@@ -293,6 +294,7 @@ SLA曲线加法如\autoref{fig:design-sla-add}所示。
     \CostForRequest $\leftarrow$ 容纳\Request 所需的\UT 个数$\times$\UT .P \;
     \If{\CostForRequest $<$ \BestCost}{
       \BestType $\leftarrow$ \UT \;
+      \BestCost $\leftarrow$ \CostForRequest \;
     }
   }
 
