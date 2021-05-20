@@ -2,44 +2,51 @@
 
 \ustcsetup{
   keywords = {
-    存储系统, 闪存, 多租户, 资源池化, 服务质量
+    存储系统, 闪存, 多租户, 尾延迟, 服务质量
   },
   keywords* = {
-    Computer Storage System, Flash Storage, Multi-Tenancy, Resource Disaggregation, Quality of Service
+    Computer Storage System, Flash Storage, Multi-Tenancy, Tail Latency, Quality of Service
   },
 }
 
 \begin{abstract}
-  由于其低延迟、高吞吐的特点，\textit{闪存}在云系统中得到了越来越广泛的应用。
-  同时，为了解决数据中心资源利用率低的问题，科研人员提出了\textit{资源池化}，通过将计算与存储等解耦合，使资源能更高效地在租户之间共享。
-  在资源池化的存储系统中，多租户间\textit{性能隔离}、互不干扰是一个重要需求。
-  然而，在闪存中，一个租户的写请求可能触发闪存内部的垃圾回收等维护行为，这些行为会严重影响其它租户的访问性能，从而使租户间的性能隔离难以实现。
-  由于以上的\textit{读写干扰}问题，在对延迟要求较高的云服务中，闪存大多被租户独占。
+  由于其低延迟、高吞吐的特点，基于NAND\textit{闪存}的固态硬盘（SSD）在云系统中得到了越来越广泛的应用。
+  云闪存系统的服务质量往往以读写吞吐和尾延迟衡量。
+  对于云闪存系统服务商而言，想要实现服务等级协议（SLA，Service Level Agreement）的一大挑战就是多租户间的\textit{性能隔离}问题。
+  这是因为在闪存中，一个租户的写请求可能触发闪存内部的垃圾回收等维护行为，这些行为会严重影响其它租户的吞吐和尾延迟。
+  由于以上的\textit{读写干扰}问题，在对延迟要求较高的云服务中，闪存资源不得不被单一租户独占，这严重影响了闪存资源的利用率。
   
-  本文通过减少上述读写干扰问题，构建了一个具有多租户性能隔离特性的闪存资源池化系统。
-  \textbf{1）}本文通过分配隔离的纯读和纯写时间窗口，使闪存在纯读窗口中获得不受干扰的读延迟，在纯写窗口中通过批量化得到最大的写带宽；
-  \textbf{2）}本文利用具有以上特征的闪存搭建具有不同冗余特征的闪存阵列，并通过协调各块闪存中的时间窗口，使得任一时刻对任何数据的访问都能获得不受干扰的读延迟；
-  \textbf{3）}在此基础上，本文基于\textit{用户服务曲线}和装箱问题，提出了一个闪存资源池化系统中不同闪存阵列选择和资源分配的贪心算法。
-  试验结果表明本文提出的系统具有良好的性能隔离效果和高效的资源利用率。
-  \JF{加实验结果}
+  针对以上问题，本文提出用\textit{SLA曲线}描述用户的闪存服务需求，并设计了一个多租户性能隔离的云闪存系统。
+  \textbf{1）}为了\textit{避免}租户间的读写干扰，本文通过分配隔离的纯读和纯写时间窗口，
+  使闪存得到最佳的读延迟和写带宽，并通过协调多个硬盘中的时间窗口构建了无读写干扰的SSD阵列。
+  \textbf{2）}为了\textit{减轻}租户间的读写干扰，本文基于\textit{SLA曲线}进行SSD的资源分配。
+  在静态时，本文通过一个基于装箱问题的启发式数据分布算法，用尽可能少的硬盘满足租户的SLA需求；
+  在运行时，通过动态的IO请求调度，保证每个租户都能达到其SLA要求的吞吐和尾延迟。
+  % 第一种方法是通过分离的读写时间窗口构建无读写干扰的SSD阵列，其目的是彻底避免租户间的读写干扰。
+  % 通过对SSD阵列构建方式和时间窗口大小的选择，该SSD阵列可以在保证较大读写吞吐的情况下保持接近于纯读的读延迟。
+  % 第二种方法是基于SLA曲线对存储资源进行分配，其目的是尽可能减轻租户间的读写干扰。
+  % 通过在数据分布时确保租户的SLA需求不会超过SSD的限制，并在运行时动态根据SLA曲线进行IO请求调度，本系统可以利用尽可能少的资源满足租户的SLA需求。
+  实验结果显示，综合使用上述两种方法，最多可在保证租户SLA需求的同时将云闪存系统整体的硬盘数量减少约一半。
+
 \end{abstract}
 
 \begin{abstract*}
   Thanks to its low latency and high throughput, NAND-based flash storage is increasingly gaining popularity in cloud datacenters.
-  Meanwhile, researchers have proposed \textit{resource disaggregation} to deal with the low resource utilization in datacenters.
-  In such disaggregated storage systems, \textit{multi-tenant performance isolation} is a vital requirement.
-  However, on a flash disk, write requests from a certain tenant may trigger the disk's internal maintenance operations,
+  In such cloud flash storage systems, quality of service is usually measured by throughput and tail latency.
+  For multi-tenant cloud flash storage serive providers, one of the largest challenges to implementing SLA (Service Level Agreement)
+  is the multi-tenant performance isolation problem.
+  This is because, on a flash disk, write requests from a certain tenant may trigger the disk's internal maintenance operations,
   which in turn will impact access performance from other tenants, making it hard to achieve performance isolation.
   Because of this \textit{read-write interference} problem, each flash disk are usually assigned to only one user.
 
-  This thesis presents a disaggregated flash storage system with multi-tenant isolation by minimizing read-write interference.
-  \textbf{1)} This work proposes to assign isolated pure-read and pure-write time windows on flash disks,
-  thus achieving un-interferenced read latency during read windows
-  and maximized write bandwidth during write windows through batching.
-  \textbf{2)} This work builds fault-tolerant flash arrays based on these read-write isolated disks which provide
+  This thesis first proposes to use SLA curves to desribe user requirements.
+  Based on this, this thesis presents a flash storage system with multi-tenant isolation by minimizing read-write interference.
+  \textbf{1)} To \textit{avoid} read-write interference between tenants, the system uses isolated time windows for reads and writes to
+  get the best read latency and write bandwidth out of flash SSDs.
+  This work also builds fault-tolerant flash arrays based on these read-write isolated disks which provide
   un-interferenced read latency at \textit{any} time by orchaestrating time windows on different disks.
-  \textbf{3)} Furthurmore, this work designs a greedy algorithm for the resource allocation problem on disaggregated flash storage systems
-  based on \textit{SLA Curve} and the bin packing problem.
-  Experiments show that the proposed system achieves good performance isolation and high resource utilization.
-  \JF{Experiment results}
+  \textbf{2)} To \textit{reduce} read-write interference between tenants, this work aloocates SSD resources based on \textit{SLA Curve}.
+  This thesis uses a heuristic data placement algorithm to fulfill tenants' SLA requirements with as least disks as possible.
+  During runtime, this thesis guarantees tenants get their required throughput and tail latency with dynamic IO request scheduling.
+  Experiments show that the proposed methods can reduce the number of disks in cloud flash systems by at most a half.
 \end{abstract*}

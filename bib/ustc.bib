@@ -91,6 +91,20 @@
   year={2020}
 }
 
+@misc{awsio2,
+  title={Provisioned IOPS SSD volumes},
+  journal={Amazon Web Service},
+  howpublished = {\url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html#EBSVolumeTypes_piops}},
+  year={2021}
+}
+
+@misc{azureultradisk,
+  title={Using Azure ultra disks},
+  journal={Microsoft Azure},
+  howpublished = {\url{https://docs.microsoft.com/en-us/azure/virtual-machines/disks-enable-ultra-ssd}},
+  year={2021}
+}
+
 @misc{nvmeof2016,
   title={{NVMe} Over Fabrics, revision 1.0},
   journal={NVM Express, Inc},
@@ -481,3 +495,23 @@ month = feb,
    url = "https://en.wikipedia.org/wiki/Bin_packing_problem",
    note = "[Online; accessed 22-July-2004]"
  }
+
+ @article{yadgar2021trace,
+author = {Yadgar, Gala and Gabel, MOSHE and Jaffer, Shehbaz and Schroeder, Bianca},
+title = {SSD-Based Workload Characteristics and Their Performance Implications},
+year = {2021},
+issue_date = {February 2021},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {17},
+number = {1},
+issn = {1553-3077},
+url = {https://doi.org/10.1145/3423137},
+doi = {10.1145/3423137},
+abstract = {Storage systems are designed and optimized relying on wisdom derived from analysis studies of file-system and block-level workloads. However, while SSDs are becoming a dominant building block in many storage systems, their design continues to build on knowledge derived from analysis targeted at hard disk optimization. Though still valuable, it does not cover important aspects relevant for SSD performance. In a sense, we are “searching under the streetlight,” possibly missing important opportunities for optimizing storage system design.We present the first I/O workload analysis designed with SSDs in mind. We characterize traces from four repositories and examine their “temperature” ranges, sensitivity to page size, and “logical locality.” We then take the first step towards correlating these characteristics with three standard performance metrics: write amplification, read amplification, and flash read costs. Our results show that SSD-specific characteristics strongly affect performance, often in surprising ways.},
+journal = {ACM Trans. Storage},
+month = jan,
+articleno = {8},
+numpages = {26},
+keywords = {SSD, locality, workload characterization, I/O workload analysis}
+}
