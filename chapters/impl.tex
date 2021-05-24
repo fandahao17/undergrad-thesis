@@ -29,9 +29,13 @@
 
 具体来讲，IO调度器在实现时利用一个独立的线程进行请求调度。
 在IO调度器中，每个租户的请求都有一个租户标记\textit{tenant\_id}。
-每个租户线程通过一个无锁的消息队列将请求发送给调度器线程。
+每个租户线程通过一个无锁的消息队列将请求发送给调度器线程~\cite{dpdkring}。
 调度器线程轮询这个消息队列，并根据该租户在该时间片中剩余的可能带宽来决定将请求提交或是继续排队。
 当请求结束后，调度器线程通过另一个消息队列将结果返回租户。
+
+通过以上设计，IO调度器中只有该调度线程需要维护租户的IO配额和它在每个时间片中已经提交的读写吞吐。
+线程之间除了无锁队列，没有共享的数据，因此整个设计不需要上锁。
+由于请求未完成时，调度线程不会将结果返回租户，因此租户可以通过这个反向压力（backpressure）来进行自身的吞吐调节。
 
 \section{存储单元}
 \label{sec:impl-storage-unit}
@@ -45,16 +49,15 @@ SPDK通过绑定CPU核进行轮询，并直接将NVMe队列映射到用户内存
 在SSD的读窗口中，对它的写请求数据直接被存入存储服务器上预先开辟的内存池中。
 为了避免读窗口阻塞租户的写队列，存储服务器直接向租户返回写成功的信号。
 
-% \begin{figure}[h]
-%   \centering
-%   \includegraphics[width=0.7\textwidth]{thesis-window-size.pdf}
-%   \caption{
-%         窗口大小的选择。
-%         \JF{加入数据点标记}
-%       }
-%   \label{fig:impl-window-size}
-% \end{figure}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.8\textwidth]{thesis-wr-window-size.pdf}
+  \caption{
+        写请求引发的异步维护操作将使得后续读窗口起始处的读请求出现异常延迟，因此需要选用较大的读写窗口大小。
+      }
+  \label{fig:impl-wr-window-size}
+\end{figure}
 
 \autoref{chap:design}提到，读窗口和写窗口的时长不能被选择得过小，否则过多的窗口切换会影响尾延迟。
-\JF{加图}具体描述了这一问题，当写窗口结束后，后续约3ms内的读请求仍有较大延迟。
+\autoref{fig:impl-wr-window-size}具体描述了这一问题，当写窗口结束后，后续数毫秒内的读请求仍有较大延迟。
 因此，本系统倾向于使用较大的读写时间窗口，从而减少读写窗口切换的频率。
